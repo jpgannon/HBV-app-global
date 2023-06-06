@@ -4,13 +4,14 @@ library(tidyverse)
 library(lubridate)
 library(plotly)
 library(leaflet)
-#library(rgdal)
 library(sf)
 library(rtop)
 
 theme_set(theme_classic())
 source("HBV.R")
 source("hbvnse.R")
+source("NPE-KlingGupta.R")
+source("hbvNPEKG.R")
 
 end <- ymd("2014-10-01")
 start <-  ymd("2009-10-01")
@@ -20,11 +21,11 @@ template <- tribble(
     2009-10-02,0,0,0,0
 )
 
-NSEpars <- data.frame(matrix(ncol = 13, nrow = 100)) %>%
+NSEpars <- data.frame(matrix(ncol = 14, nrow = 100)) %>%
   mutate_all(~replace(., is.na(.), 0))
 colnames(NSEpars) <- c("FC", "beta", "LP", "SFCF", "TT", 
                        "CFMAX", "k0", "k1", "k2", "UZL", 
-                       "PERC", "MAXBAS", "NSE")
+                       "PERC", "MAXBAS", "NSE", "NPEKG")
 write_csv(NSEpars, "NSEpars.csv")
 
 #Read shapefile
@@ -55,35 +56,42 @@ startpars <- rando()
 ui <- fluidPage(
     theme = shinytheme("lumen"),
     # Application title
-    titlePanel("HBV Model for CAMELS Watersheds"),
+    titlePanel("Run the HBV Model for one of 700 CARAVAN Watersheds"),
 
-    # Sidebar with a sliders for paramters
+    # Sidebar with a sliders for parameters
     sidebarLayout(
-        sidebarPanel(
+        sidebarPanel(width = 4,
             selectInput("gage", "Choose a watershed here or using the map", 
                         choices = c(unique(gages$GAGE_NAME), "User Data"), 
-                        selected = gages$GAGE_NAME[1]),
+                        selected = gages$GAGE_NAME[5]),
             dateRangeInput("dates", "Run the model for these dates:",
                            start = start, end = end, min = start, max = end),
+            hr(style = "border-top: 1px solid #000000;"),
+            h5(HTML("<b>Parameters for water movement through storages</b>")),
             sliderInput("FC"     ,"Soil field capacity", min = 40   , max = 400 , value = startpars[1]),  #Max soil moisture storage, field capacity
             sliderInput("beta"   ,"Shape coeff for water delivery to soil", min = 1    , max = 6   , value = startpars[2]),    #Shape coefficient governing fate of water input to soil moisture storage
-            sliderInput("LP"     ,"Threshold for Evap reduction", min = .3   , max = 1   , value = startpars[3]),    #Threshold for reduction of evap
-            sliderInput("SFCF"   ,"Snowfall correction factor", min = 0.4  , max = 1.2 , value = startpars[4]),  #Snowfall correction factor
-            sliderInput("TT"     ,"Threshold temperature", min = -1.5 , max = 1.2 , value = startpars[5]),  #Threshold temperature
-            sliderInput("CFMAX"  ,"Degree-day factor", min = 1    , max = 8   , value = startpars[6]),    #Degree-day factor
+            sliderInput("UZL"    ,"Threshold for shallow storage", min = 0    , max = 70  , value = startpars[10]),   #Threshold for shallow storage
             sliderInput("k0"     ,"Recession constant: near surface storage", min = 0.05 , max = 0.5 , value = startpars[7]),  #Recession constant (upper storage, near surface)
             sliderInput("k1"     ,"Recession constant: upper storage", min = 0.01 , max = 0.3 , value = startpars[8]),  #Recession constant (upper storage)
             sliderInput("k2"     ,"Recession constant: lower storage", min = 0.001, max = 0.15, value = startpars[9]), #Recession constant (lower storage)
-            sliderInput("UZL"    ,"Threshold for shallow storage", min = 0    , max = 70  , value = startpars[10]),   #Threshold for shallow storage
             sliderInput("PERC"   ,"Percolation: max flow from upper-lower", min = 0    , max = 4   , value = startpars[11]),    #Percolation, max flow from upper to lower storage
+            sliderInput("LP"     ,"Threshold for Evap reduction", min = .3   , max = 1   , value = startpars[3]),    #Threshold for reduction of evap
+            h5(HTML("<b>Parameters for snow routine</b>")),
+            sliderInput("SFCF"   ,"Snowfall correction factor", min = 0.4  , max = 1.2 , value = startpars[4]),  #Snowfall correction factor
+            sliderInput("TT"     ,"Threshold temperature", min = -1.5 , max = 1.2 , value = startpars[5]),  #Threshold temperature
+            sliderInput("CFMAX"  ,"Degree-day factor", min = 1    , max = 8   , value = startpars[6]),    #Degree-day factor
+            hr(style = "border-top: 1px solid #000000;"),
             #sliderInput("MAXBAS" ,"Base of Triangular routing function", min = 1    , max = 3   , value = startpars[12]),    #base of the triangular routing function, days
-            numericInput("lat"   ,"Latitude: ", value = gages$LAT[gages$GAGE_NAME == gages$GAGE_NAME[1]]),
-            numericInput("elev"  ,"Elevation: ", value = gages$Elevation_m[gages$GAGE_NAME == gages$GAGE_NAME[1]]),
-            sliderInput("snowWT" , "Weight of snow in NSE calculation", min = 0, max = 1, value = 0),
+            numericInput("lat"   ,"Latitude: (for PET calculation)", value = gages$LAT[gages$GAGE_NAME == gages$GAGE_NAME[1]]),
+            #numericInput("elev"  ,"Elevation: ", value = gages$Elevation_m[gages$GAGE_NAME == gages$GAGE_NAME[1]]),
+            hr(style = "border-top: 1px solid #000000;"),
+            h5(HTML("<b>Parameterization tools</b>")),
             actionButton("genrando", "Generate Random Parameter Set"),
+            radioButtons("objfxn", label = "Objective Function to optimize", choices = c("NSE", "NPKGE"), selected = "NSE"),
+            sliderInput("snowWT" , "Weight of snow in objective function calculation", min = 0, max = 1, value = 0),
             numericInput("runs"  , "# of Runs for Monte Carlo", min = 100, max = 10000, value = 100),
             actionButton("runMC" , "Run Monte Carlo"),
-            h5("Click below to run a SCEUA optimization. This will take a few minutes."),
+            h5(HTML("Click below to run a SCEUA optimization. This will take a few minutes.")),
             actionButton("runSCEUA", "Run SCEUA Optimization")
         ),
 
@@ -166,11 +174,11 @@ server <- function(input, output, session) {
     })
     
     observeEvent(input$gage,{
-    ELEV <- gages$Elevation_m[gages$GAGE_NAME == input$gage]
+    #ELEV <- gages$Elevation_m[gages$GAGE_NAME == input$gage]
     LAT <- gages$LAT[gages$GAGE_NAME == input$gage]
     
-    updateNumericInput(inputId = "elev", 
-                       value = ELEV)
+    #updateNumericInput(inputId = "elev", 
+      #                 value = ELEV)
     
     updateNumericInput(inputId = "lat", 
                        value = LAT)
@@ -240,16 +248,27 @@ server <- function(input, output, session) {
             filter(DATE >= min(outputNSE$DATE), DATE <= max(outputNSE$DATE))
         
         #Calculate NSE and add to parameter set
-        NSE <- 1 - ((sum((outputNSE$Qobs - outputNSE$q) ^ 2)) / 
-                        sum((outputNSE$Qobs - mean(outputNSE$Qobs, na.rm = TRUE)) ^ 2))
+        NSE <- 1 - ((sum((outputNSE$Qobs - outputNSE$q) ^ 2, na.rm = TRUE)) / 
+        sum((outputNSE$Qobs - mean(outputNSE$Qobs, na.rm = TRUE)) ^ 2, na.rm = TRUE))
         
-        snowNSE <- 1 - ((sum((justsnow$Snow - justsnow$SWE) ^ 2)) / 
-                            sum((justsnow$Snow - mean(justsnow$Snow)) ^ 2))
+        snowNSE <- 1 - ((sum((justsnow$Snow - justsnow$SWE) ^ 2, na.rm = TRUE)) / 
+        sum((justsnow$Snow - mean(justsnow$Snow, na.rm = TRUE)) ^ 2, na.rm = TRUE))
         
         if(is.na(snowNSE) == TRUE) snowNSE <- 0
         if(snowNSE == -Inf) snowNSE <- 0
         
         NSE <- (NSE * (1 - input$snowWT)) + (snowNSE * input$snowWT)
+        
+        NPEKG <- RNP(sim = outputNSE$q,
+                     obs = outputNSE$Qobs)
+        
+        snowNPEKG <- RNP(sim = justsnow$SWE,
+                         obs = justsnow$Snow)
+        
+        if(snowNPEKG == -Inf) snowNPEKG <- 0
+        if(is.na(snowNPEKG) == TRUE) snowNSE <- 0
+        
+        NPEKG <- (NPEKG * (1 - input$snowWT)) + (snowNPEKG * input$snowWT)
         
         vline <- function(x = 0, color = "red") {
             list(
@@ -263,14 +282,31 @@ server <- function(input, output, session) {
             )
         }
         
+        table1 <- plot_ly(
+          type = 'table',
+          header = list(
+            values = c('<b>Parameter</b>', '<b>Value</b>'),
+            line = list(color = '#506784'),
+            fill = list(color = '#119DFF'),
+            align = c('left','center'),
+            font = list(color = 'white', size = 12)
+          ),
+          cells = list(
+            values = rbind(
+              c('NSE', 'NPE-KG', 'Observed mean Q', 'Modeled mean Q'),
+              c(round(NSE, 2), round(NPEKG, 2), 
+                paste(round(mean(output$Qobs, na.rm = TRUE),2), "mm/day"), 
+                paste(round(mean(output$q, na.rm = TRUE),2), "mm/day"))),
+            line = list(color = '#506784'),
+            fill = list(color = c('white', 'white')),
+            align = c('left', 'center'),
+            font = list(color = c('#506784'), size = 12)
+          ))
+        
         plot1 <- output %>% plot_ly(x = ~DATE)
         plot1 <- plot1 %>% add_trace(y = ~q, name = 'Q Modeled', mode = 'lines')
         plot1 <- plot1 %>% add_trace(y = ~Qobs, name = 'Q Measured', mode = 'lines')
-        plot1 <- plot1 %>% layout(title = paste("NSE =", round(NSE, 2), 
-        "(Calculated after red line)\nMean Q observed = ", 
-        round(mean(output$Qobs),2),
-        "mm/day\nMean Q modeled =", round(mean(output$q),2),"mm/day")) 
-        
+    
         plot1 <- plot1 %>% layout(yaxis = list(title = "Discharge(mm)")) %>%
                         layout(shapes = list(vline(output$DATE[EvalStart]))) 
 
@@ -301,27 +337,39 @@ server <- function(input, output, session) {
             layout(shapes = list(vline(output$DATE[EvalStart]))) 
         
         plot6 <- output %>% plot_ly(x = ~DATE) %>%
-          add_trace(y = ~Temp, mode = 'lines', name = "Temp (C) measured") 
+          add_trace(y = ~Temp, mode = 'lines', name = "Temp (C) measured") %>%
+          layout(yaxis = list(title = "Temp (deg C)"))
         
-        subplot(plot1, plot2, plot3, plot4, plot5, plot6,
+        subplot(table1, plot1, plot2, plot3, plot4, plot5, plot6,
                 shareX = TRUE, titleY = TRUE, 
-                nrows = 6, heights = c(.25, .15, .15, .15, .15, .15))
+                nrows = 7, heights = c(.10, .2, .14, .14, .14, .14, .14)) #.25, .15, .15, .15, .15, .15
     })
     
     
       
       observeEvent(input$Refresh,
-                   {output$NSEplot <- renderPlot({
-        NSEparsdat <- read_csv("NSEpars.csv") %>% 
-          select(-MAXBAS) %>%
-          top_n(100, NSE) %>%
-          pivot_longer(cols = -NSE)
-        NSEparsdat %>%
-          ggplot(aes(x = value, y = NSE))+
-          geom_point()+
-          facet_wrap(facets = vars(name), scales = "free_x", ncol = 3)+
-          ggtitle("Parameter values and NSE of top 100 runs")+
-          theme(text = element_text(size = 20))
+      { if(input$objfxn == "NSE") output$NSEplot <- renderPlot({
+                  NSEparsdat <- read_csv("NSEpars.csv") %>% 
+                  select(-MAXBAS) %>%
+                  top_n(100, NSE) %>%
+                  pivot_longer(cols = -c(NSE, NPEKG))
+                NSEparsdat %>%
+                  ggplot(aes(x = value, y = NSE))+
+                  geom_point()+
+                  facet_wrap(facets = vars(name), scales = "free_x", ncol = 3)+
+                  ggtitle("Parameter values and NSE of top 100 runs")+
+                  theme(text = element_text(size = 20))})
+        if(input$objfxn == "NPKGE")output$NSEplot <- renderPlot({
+                  NSEparsdat <- read_csv("NSEpars.csv") %>% 
+                  select(-MAXBAS) %>%
+                  top_n(100, NPEKG) %>%
+                  pivot_longer(cols = -c(NSE, NPEKG))
+                NSEparsdat %>%
+                  ggplot(aes(x = value, y = NPEKG))+
+                  geom_point()+
+                  facet_wrap(facets = vars(name), scales = "free_x", ncol = 3)+
+                  ggtitle("Parameter values and NPEKG of top 100 runs")+
+                  theme(text = element_text(size = 20))
       })
     })
     
@@ -332,10 +380,10 @@ server <- function(input, output, session) {
         routing <- 0
         dummy <- input$FC
        
-        NSEpars <- data.frame(matrix(ncol = 13, nrow = input$runs))
+        NSEpars <- data.frame(matrix(ncol = 14, nrow = input$runs))
         colnames(NSEpars) <- c("FC", "beta", "LP", "SFCF", "TT", 
                                "CFMAX", "k0", "k1", "k2", "UZL", 
-                               "PERC", "MAXBAS", "NSE")
+                               "PERC", "MAXBAS", "NSE", "NPEKG")
         
         for (i in 1:input$runs){
             pars <- rando()
@@ -358,33 +406,39 @@ server <- function(input, output, session) {
             justsnow <- select(results, Snow, SWE)
             
             #Calculate NSE and add to parameter set
-            NSE <-  1 - ((sum((results$Qobs - results$q) ^ 2)) / 
-                             sum((results$Qobs - mean(results$Qobs)) ^ 2))
+            NSE <-  1 - ((sum((results$Qobs - results$q) ^ 2, na.rm = TRUE)) / 
+                             sum((results$Qobs - mean(results$Qobs, na.rm = TRUE)) ^ 2, na.rm = TRUE))
             
-            snowNSE <- 1 - ((sum((justsnow$Snow - justsnow$SWE) ^ 2)) / 
-                                sum((justsnow$Snow - mean(justsnow$Snow)) ^ 2))
+            snowNSE <- 1 - ((sum((justsnow$Snow - justsnow$SWE) ^ 2, na.rm = TRUE)) / 
+                                sum((justsnow$Snow - mean(justsnow$Snow, na.rm = TRUE)) ^ 2, na.rm = TRUE))
+            
+            NPEKG <- RNP(sim = results$q,
+                         obs = results$Qobs)
+            
+            snowNPEKG <- RNP(sim = justsnow$SWE,
+                             obs = justsnow$Snow)
             
             if(snowNSE == -Inf) snowNSE <- 0
+            if(snowNPEKG == -Inf) snowNPEKG <- 0
             
             NSE <- (NSE * (1 - input$snowWT)) + (snowNSE * input$snowWT)
-            
+            NPEKG <- (NPEKG * (1 - input$snowWT)) + (snowNPEKG * input$snowWT)
             #add NSE and pars df output
-            NSEpars[i,] <- c(pars, NSE)
-            
-           #if(i == 1) {
-           #    NSEmax <- NSE
-           #    bestpars <- pars
-           #}
-           #
-           #if(NSE > NSEmax){
-           #    NSEmax <- NSE
-           #    bestpars <- pars
-           #} 
+            NSEpars[i,] <- c(pars, NSE, NPEKG)
+         
         }
         #bestpars
+        if(input$objfxn == "NSE"){
         NSEpars <- arrange(NSEpars, desc(NSE))
         write_csv(NSEpars, "NSEpars.csv")
         NSEpars
+        }
+        
+        if(input$objfxn == "NPKGE"){
+          NSEpars <- arrange(NSEpars, desc(NPEKG))
+          write_csv(NSEpars, "NSEpars.csv")
+          NSEpars
+        }
     })
     
     HBVoutSCEUA <- reactive({
@@ -401,10 +455,16 @@ server <- function(input, output, session) {
         
         obs <- input_data()$Qobs
         
+        if(input$objfxn == "NSE"){
         sceuaout <- sceua(hbvnse, pars = pars, 
                           lower = lowpar, upper = highpar, 
                           dat = dat, obs = obs, routing = 0)
-        
+        }
+        if(input$objfxn == "NPKGE"){
+          sceuaout <- sceua(hbvnpe, pars = pars, 
+                            lower = lowpar, upper = highpar, 
+                            dat = dat, obs = obs, routing = 0)
+        }
         sceuaout$par
 
         })

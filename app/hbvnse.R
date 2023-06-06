@@ -12,7 +12,8 @@ hbvnse <- function(params, dat, obs, routing){
   results <- results[EvalStart:EvalEnd,]
   
   NSE <- 1 - ((sum((results$Qobs - results$q)^2, na.rm = TRUE))/
-                sum((results$Qobs - mean(results$Qobs)) ^ 2, na.rm = TRUE))
+    sum((results$Qobs - mean(results$Qobs, na.rm = TRUE)) ^ 2, 
+        na.rm = TRUE))
   
   return(-NSE)
 }
