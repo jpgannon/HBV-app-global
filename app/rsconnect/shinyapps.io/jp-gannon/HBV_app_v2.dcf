@@ -1,0 +1,14 @@
+name: HBV_app_v2
+title: HBV_app_v2
+username:
+account: jp-gannon
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 6131148
+bundleId: 6605234
+url: https://jp-gannon.shinyapps.io/HBV_app_v2/
+when: 1670427907.43759
+lastSyncTime: 1670427907.4376
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: simplify ws file.R
