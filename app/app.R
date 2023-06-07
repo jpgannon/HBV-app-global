@@ -92,13 +92,17 @@ ui <- fluidPage(
             numericInput("runs"  , "# of Runs for Monte Carlo", min = 100, max = 10000, value = 100),
             actionButton("runMC" , "Run Monte Carlo"),
             h5(HTML("Click below to run a SCEUA optimization. This will take a few minutes.")),
-            actionButton("runSCEUA", "Run SCEUA Optimization")
+            actionButton("runSCEUA", "Run SCEUA Optimization"),
+            hr(style = "border-top: 1px solid #000000;"),
+            downloadButton("downloadData", "Download current model data")
         ),
 
         # Show output plots
         mainPanel(
             tabsetPanel(type = "tabs",
-                        tabPanel("HBV Output", plotlyOutput("QPlot", height = 1000)),
+                        tabPanel("HBV Output", 
+                                 plotlyOutput("table1", height = 200),
+                                 plotlyOutput("QPlot", height = 1000)),
             
             tabPanel("Select on Map",
                      leafletOutput("Map")
@@ -230,6 +234,68 @@ server <- function(input, output, session) {
         bind_cols(modeloutput, input_data()$Qobs)
     })
     
+    output$table1 <- renderPlotly({
+      output <- bind_cols(HBVout(), 
+                          DATE = input_data()$DATE,
+                          Qobs = input_data()$Qobs)
+      snowout <- bind_cols(output, 
+                           Snow = input_data()$Snow)
+      
+      #make snow record to calc NSE
+      justsnow <- snowout %>% drop_na(Snow)
+      
+      EvalStart <- floor(length(output$q) * 0.4)
+      EvalEnd <- length(output$q)
+      
+      outputNSE <- output[EvalStart:EvalEnd,]
+      justsnow <- justsnow %>%
+        filter(DATE >= min(outputNSE$DATE), DATE <= max(outputNSE$DATE))
+      
+      #Calculate NSE and add to parameter set
+      NSE <- 1 - ((sum((outputNSE$Qobs - outputNSE$q) ^ 2, na.rm = TRUE)) / 
+                    sum((outputNSE$Qobs - mean(outputNSE$Qobs, na.rm = TRUE)) ^ 2, na.rm = TRUE))
+      
+      snowNSE <- 1 - ((sum((justsnow$Snow - justsnow$SWE) ^ 2, na.rm = TRUE)) / 
+                        sum((justsnow$Snow - mean(justsnow$Snow, na.rm = TRUE)) ^ 2, na.rm = TRUE))
+      
+      if(is.na(snowNSE) == TRUE) snowNSE <- 0
+      if(snowNSE == -Inf) snowNSE <- 0
+      
+      NSE <- (NSE * (1 - input$snowWT)) + (snowNSE * input$snowWT)
+      
+      NPEKG <- RNP(sim = outputNSE$q,
+                   obs = outputNSE$Qobs)
+      
+      snowNPEKG <- RNP(sim = justsnow$SWE,
+                       obs = justsnow$Snow)
+      
+      if(snowNPEKG == -Inf) snowNPEKG <- 0
+      if(is.na(snowNPEKG) == TRUE) snowNSE <- 0
+      
+      NPEKG <- (NPEKG * (1 - input$snowWT)) + (snowNPEKG * input$snowWT)
+      
+      plot_ly(
+        type = 'table',
+        header = list(
+          values = c('<b>Parameter</b>', '<b>Value</b>'),
+          line = list(color = '#506784'),
+          fill = list(color = '#119DFF'),
+          align = c('left','center'),
+          font = list(color = 'white', size = 12)
+        ),
+        cells = list(
+          values = rbind(
+            c('NSE', 'NPE-KG', 'Observed mean Q', 'Modeled mean Q'),
+            c(round(NSE, 2), round(NPEKG, 2), 
+              paste(round(mean(output$Qobs, na.rm = TRUE),2), "mm/day"), 
+              paste(round(mean(output$q, na.rm = TRUE),2), "mm/day"))),
+          line = list(color = '#506784'),
+          fill = list(color = c('white', 'white')),
+          align = c('left', 'center'),
+          font = list(color = c('#506784'), size = 12)
+        ))
+    })
+    
     output$QPlot <- renderPlotly({
         output <- bind_cols(HBVout(), 
                             DATE = input_data()$DATE,
@@ -282,26 +348,7 @@ server <- function(input, output, session) {
             )
         }
         
-        table1 <- plot_ly(
-          type = 'table',
-          header = list(
-            values = c('<b>Parameter</b>', '<b>Value</b>'),
-            line = list(color = '#506784'),
-            fill = list(color = '#119DFF'),
-            align = c('left','center'),
-            font = list(color = 'white', size = 12)
-          ),
-          cells = list(
-            values = rbind(
-              c('NSE', 'NPE-KG', 'Observed mean Q', 'Modeled mean Q'),
-              c(round(NSE, 2), round(NPEKG, 2), 
-                paste(round(mean(output$Qobs, na.rm = TRUE),2), "mm/day"), 
-                paste(round(mean(output$q, na.rm = TRUE),2), "mm/day"))),
-            line = list(color = '#506784'),
-            fill = list(color = c('white', 'white')),
-            align = c('left', 'center'),
-            font = list(color = c('#506784'), size = 12)
-          ))
+        
         
         plot1 <- output %>% plot_ly(x = ~DATE)
         plot1 <- plot1 %>% add_trace(y = ~q, name = 'Q Modeled', mode = 'lines')
@@ -340,9 +387,9 @@ server <- function(input, output, session) {
           add_trace(y = ~Temp, mode = 'lines', name = "Temp (C) measured") %>%
           layout(yaxis = list(title = "Temp (deg C)"))
         
-        subplot(table1, plot1, plot2, plot3, plot4, plot5, plot6,
+        subplot(plot1, plot2, plot3, plot4, plot5, plot6,
                 shareX = TRUE, titleY = TRUE, 
-                nrows = 7, heights = c(.10, .2, .14, .14, .14, .14, .14)) #.25, .15, .15, .15, .15, .15
+                nrows = 6, heights = c(.25, .15, .15, .15, .15, .15)) 
     })
     
     
@@ -554,6 +601,25 @@ server <- function(input, output, session) {
       filename <- normalizePath(file.path('./www/HBV_diagram.png'))
       list(src = filename)
     }, deleteFile = FALSE)
+    
+    output$downloadData <- downloadHandler(
+      filename = function() {
+        # Use the selected dataset as the suggested file name
+        paste0(input$gage, ".csv")
+      },
+      content = function(file) {
+        # Write the dataset to the `file` that will be downloaded
+        output <- bind_cols( 
+                            DATE = input_data()$DATE, 
+                            Qobs = input_data()$Qobs,
+                            SnowObs = input_data()$Snow, 
+                            HBVout())
+    
+        write.csv(output, file)
+      }
+    )
+    
+    
 }
 # Run the application 
 shinyApp(ui = ui, server = server)
