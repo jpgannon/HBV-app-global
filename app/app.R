@@ -1,4 +1,5 @@
 library(shiny)
+library(shinybusy)
 library(shinythemes)
 library(tidyverse)
 library(lubridate)
@@ -6,6 +7,7 @@ library(plotly)
 library(leaflet)
 library(sf)
 library(rtop)
+
 
 theme_set(theme_classic())
 source("HBV.R")
@@ -52,15 +54,19 @@ rando <- function(){
 
 startpars <- rando()
 
+
 # Define UI for application 
 ui <- fluidPage(
+  add_busy_spinner(spin = "fading-circle"),
     theme = shinytheme("lumen"),
     # Application title
     titlePanel("Run the HBV Model for one of 700 CARAVAN Watersheds"),
-
+    
     # Sidebar with a sliders for parameters
     sidebarLayout(
         sidebarPanel(width = 4,
+            
+            #actionButton("guide", "Guide"),
             selectInput("gage", "Choose a watershed here or using the map", 
                         choices = c(unique(gages$GAGE_NAME), "User Data"), 
                         selected = gages$GAGE_NAME[5]),
@@ -68,28 +74,94 @@ ui <- fluidPage(
                            start = start, end = end, min = start, max = end),
             hr(style = "border-top: 1px solid #000000;"),
             h5(HTML("<b>Parameters for water movement through storages</b>")),
-            sliderInput("FC"     ,"Soil field capacity", min = 40   , max = 400 , value = startpars[1]),  #Max soil moisture storage, field capacity
-            sliderInput("beta"   ,"Shape coeff for water delivery to soil", min = 1    , max = 6   , value = startpars[2]),    #Shape coefficient governing fate of water input to soil moisture storage
-            sliderInput("UZL"    ,"Threshold for shallow storage", min = 0    , max = 70  , value = startpars[10]),   #Threshold for shallow storage
-            sliderInput("k0"     ,"Recession constant: near surface storage", min = 0.05 , max = 0.5 , value = startpars[7]),  #Recession constant (upper storage, near surface)
-            sliderInput("k1"     ,"Recession constant: upper storage", min = 0.01 , max = 0.3 , value = startpars[8]),  #Recession constant (upper storage)
-            sliderInput("k2"     ,"Recession constant: lower storage", min = 0.001, max = 0.15, value = startpars[9]), #Recession constant (lower storage)
-            sliderInput("PERC"   ,"Percolation: max flow from upper-lower", min = 0    , max = 4   , value = startpars[11]),    #Percolation, max flow from upper to lower storage
-            sliderInput("LP"     ,"Threshold for Evap reduction", min = .3   , max = 1   , value = startpars[3]),    #Threshold for reduction of evap
+            sliderInput("FC"     ,
+                        "Soil field capacity", 
+                        min = 40, 
+                        max = 400, 
+                        step = 1,
+                        value = startpars[1]),  #Max soil moisture storage, field capacity
+            sliderInput("beta"   ,"Shape coeff for water delivery to soil", 
+                        min = 1 , 
+                        max = 6 ,
+                        step = 0.05,
+                        value = startpars[2]),    #Shape coefficient governing fate of water input to soil moisture storage
+            sliderInput("UZL"    ,
+                        "Threshold for shallow storage", 
+                        min = 0, 
+                        max = 70, 
+                        step = 0.5,
+                        value = startpars[10]),   #Threshold for shallow storage
+            sliderInput("k0"     ,
+                        "Recession constant: near surface storage", 
+                        min = 0.05, 
+                        max = 0.5, 
+                        step = 0.005,
+                        value = startpars[7]),  #Recession constant (upper storage, near surface)
+            sliderInput("k1"     ,
+                        "Recession constant: upper storage", 
+                        min = 0.01 , 
+                        max = 0.3 ,
+                        step = 0.001,
+                        value = startpars[8]),  #Recession constant (upper storage)
+            sliderInput("k2"     ,
+                        "Recession constant: lower storage", 
+                        min = 0.001, 
+                        max = 0.15, 
+                        step = 0.001,
+                        value = startpars[9]), #Recession constant (lower storage)
+            sliderInput("PERC"   ,"Percolation: max flow from upper-lower", 
+                        min = 0    , 
+                        max = 4   , 
+                        step = 0.01,
+                        value = startpars[11]),    #Percolation, max flow from upper to lower storage
+            sliderInput("LP"     ,
+                        "Threshold for Evap reduction", 
+                        min = .3, 
+                        max = 1,
+                        step = 0.01,
+                        value = startpars[3]),    #Threshold for reduction of evap
             h5(HTML("<b>Parameters for snow routine</b>")),
-            sliderInput("SFCF"   ,"Snowfall correction factor", min = 0.4  , max = 1.2 , value = startpars[4]),  #Snowfall correction factor
-            sliderInput("TT"     ,"Threshold temperature", min = -1.5 , max = 1.2 , value = startpars[5]),  #Threshold temperature
-            sliderInput("CFMAX"  ,"Degree-day factor", min = 1    , max = 8   , value = startpars[6]),    #Degree-day factor
+            sliderInput("SFCF"   ,
+                        "Snowfall correction factor", 
+                        min = 0.4, 
+                        max = 1.2, 
+                        step = 0.01,
+                        value = startpars[4]),  #Snowfall correction factor
+            sliderInput("TT"     ,
+                        "Threshold temperature", 
+                        min = -1.5 , 
+                        max = 1.2 , 
+                        step = 0.01,
+                        value = startpars[5]),  #Threshold temperature
+            sliderInput("CFMAX"  ,"Degree-day factor", 
+                        min = 1, 
+                        max = 8, 
+                        step = 0.1,
+                        value = startpars[6]),    #Degree-day factor
             hr(style = "border-top: 1px solid #000000;"),
             #sliderInput("MAXBAS" ,"Base of Triangular routing function", min = 1    , max = 3   , value = startpars[12]),    #base of the triangular routing function, days
-            numericInput("lat"   ,"Latitude: (for PET calculation)", value = gages$LAT[gages$GAGE_NAME == gages$GAGE_NAME[1]]),
+            numericInput("lat"   ,
+                         "Latitude: (for PET calculation)", 
+                         value = gages$LAT[gages$GAGE_NAME == gages$GAGE_NAME[1]]),
             #numericInput("elev"  ,"Elevation: ", value = gages$Elevation_m[gages$GAGE_NAME == gages$GAGE_NAME[1]]),
             hr(style = "border-top: 1px solid #000000;"),
             h5(HTML("<b>Parameterization tools</b>")),
-            actionButton("genrando", "Generate Random Parameter Set"),
-            radioButtons("objfxn", label = "Objective Function to optimize", choices = c("NSE", "NPKGE"), selected = "NSE"),
-            sliderInput("snowWT" , "Weight of snow in objective function calculation", min = 0, max = 1, value = 0),
-            numericInput("runs"  , "# of Runs for Monte Carlo", min = 100, max = 10000, value = 100),
+            actionButton("genrando", 
+                         "Generate Random Parameter Set"),
+            radioButtons("objfxn", 
+                         label = "Objective Function to optimize", 
+                         choices = c("NSE", "NPKGE"), 
+                         selected = "NSE"),
+            sliderInput("snowWT" , 
+                        "Weight of snow in objective function calculation", 
+                        min = 0, 
+                        max = 1, 
+                        value = 0,
+                        step = 0.1),
+            numericInput("runs"  , "# of Runs for Monte Carlo", 
+                         min = 100, 
+                         max = 10000,
+                         value = 100),
             actionButton("runMC" , "Run Monte Carlo"),
             h5(HTML("Click below to run a SCEUA optimization. This will take a few minutes.")),
             actionButton("runSCEUA", "Run SCEUA Optimization"),
@@ -139,7 +211,7 @@ ui <- fluidPage(
 
 # Define server logic 
 server <- function(input, output, session) {
-    
+  
     output$downloadTemplate <- downloadHandler(
         filename = "InputTemplate.csv",
         content = function(file) {
@@ -258,21 +330,23 @@ server <- function(input, output, session) {
       snowNSE <- 1 - ((sum((justsnow$Snow - justsnow$SWE) ^ 2, na.rm = TRUE)) / 
                         sum((justsnow$Snow - mean(justsnow$Snow, na.rm = TRUE)) ^ 2, na.rm = TRUE))
       
-      if(is.na(snowNSE) == TRUE) snowNSE <- 0
-      if(snowNSE == -Inf) snowNSE <- 0
+      #if(snowNSE == -Inf) snowNSE <- 0
+      #if(is.na(snowNSE) == TRUE) snowNSE <- 0
+     
       
-      NSE <- (NSE * (1 - input$snowWT)) + (snowNSE * input$snowWT)
+      if(input$snowWT > 0) NSE <- (NSE * (1 - input$snowWT)) + (snowNSE * input$snowWT)
       
       NPEKG <- RNP(sim = outputNSE$q,
                    obs = outputNSE$Qobs)
       
+      snowNPEKG <- 0
       snowNPEKG <- RNP(sim = justsnow$SWE,
                        obs = justsnow$Snow)
       
-      if(snowNPEKG == -Inf) snowNPEKG <- 0
       if(is.na(snowNPEKG) == TRUE) snowNSE <- 0
+      #if(snowNPEKG == -Inf) snowNPEKG <- 0
       
-      NPEKG <- (NPEKG * (1 - input$snowWT)) + (snowNPEKG * input$snowWT)
+      if(input$snowWT > 0) NPEKG <- (NPEKG * (1 - input$snowWT)) + (snowNPEKG * input$snowWT)
       
       plot_ly(
         type = 'table',
@@ -293,8 +367,9 @@ server <- function(input, output, session) {
           fill = list(color = c('white', 'white')),
           align = c('left', 'center'),
           font = list(color = c('#506784'), size = 12)
-        ))
+        )) %>% layout(width = 400)
     })
+  
     
     output$QPlot <- renderPlotly({
         output <- bind_cols(HBVout(), 
@@ -321,20 +396,21 @@ server <- function(input, output, session) {
         sum((justsnow$Snow - mean(justsnow$Snow, na.rm = TRUE)) ^ 2, na.rm = TRUE))
         
         if(is.na(snowNSE) == TRUE) snowNSE <- 0
-        if(snowNSE == -Inf) snowNSE <- 0
+        #if(snowNSE == -Inf) snowNSE <- 0
         
-        NSE <- (NSE * (1 - input$snowWT)) + (snowNSE * input$snowWT)
+        if(input$snowWT > 0) NSE <- (NSE * (1 - input$snowWT)) + (snowNSE * input$snowWT)
         
         NPEKG <- RNP(sim = outputNSE$q,
                      obs = outputNSE$Qobs)
         
+        snowNPEKG <- 0
         snowNPEKG <- RNP(sim = justsnow$SWE,
                          obs = justsnow$Snow)
         
-        if(snowNPEKG == -Inf) snowNPEKG <- 0
+        #if(snowNPEKG == -Inf) snowNPEKG <- 0
         if(is.na(snowNPEKG) == TRUE) snowNSE <- 0
         
-        NPEKG <- (NPEKG * (1 - input$snowWT)) + (snowNPEKG * input$snowWT)
+        if(input$snowWT > 0) NPEKG <- (NPEKG * (1 - input$snowWT)) + (snowNPEKG * input$snowWT)
         
         vline <- function(x = 0, color = "red") {
             list(
@@ -468,24 +544,26 @@ server <- function(input, output, session) {
             if(snowNSE == -Inf) snowNSE <- 0
             if(snowNPEKG == -Inf) snowNPEKG <- 0
             
-            NSE <- (NSE * (1 - input$snowWT)) + (snowNSE * input$snowWT)
-            NPEKG <- (NPEKG * (1 - input$snowWT)) + (snowNPEKG * input$snowWT)
+            if(input$snowWT > 0) NSE <- (NSE * (1 - input$snowWT)) + (snowNSE * input$snowWT)
+            if(input$snowWT > 0) NPEKG <- (NPEKG * (1 - input$snowWT)) + (snowNPEKG * input$snowWT)
             #add NSE and pars df output
             NSEpars[i,] <- c(pars, NSE, NPEKG)
          
         }
         #bestpars
         if(input$objfxn == "NSE"){
-        NSEpars <- arrange(NSEpars, desc(NSE))
-        write_csv(NSEpars, "NSEpars.csv")
-        NSEpars
+           NSEpars <- arrange(NSEpars, desc(NSE))
+           write_csv(NSEpars, "NSEpars.csv")
+          
         }
         
         if(input$objfxn == "NPKGE"){
           NSEpars <- arrange(NSEpars, desc(NPEKG))
           write_csv(NSEpars, "NSEpars.csv")
-          NSEpars
+          
         }
+        
+        NSEpars
     })
     
     HBVoutSCEUA <- reactive({
@@ -619,7 +697,7 @@ server <- function(input, output, session) {
       }
     )
     
-    
 }
+
 # Run the application 
 shinyApp(ui = ui, server = server)
