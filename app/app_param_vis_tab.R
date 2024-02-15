@@ -10,6 +10,7 @@ library(rtop)
 library(htmlwidgets)
 
 
+
 theme_set(theme_classic())
 source("HBV.R")
 source("hbvnse.R")
@@ -758,54 +759,80 @@ server <- function(input, output, session) {
         )
       }
       
+      #custom_palette <- c("#1f78b4", "#33a02c", "#e31a1c", "#ff7f00", "#6a3d9a", "#a6cee3")
+      
+      # Define specific colors for each value of modelrun
+      color_mapping <- c("1-Saved" = "#1f78b4", "2-Saved" = "#33a02c", "3-Saved" = "#e31a1c",
+                         "4-Saved" = "#ff7f00", "5-Saved" = "#6a3d9a", "Observed" = "#a6cee3")
+      
+      # Map modelrun to specific colors
+      custom_palette <- color_mapping[allmodels$Saved_Run]
+      
       plot1 <- plot_ly(data = allmodels,
                        x = ~DATE, y = ~q, 
                        type = "scatter", 
                        mode = "lines", 
-                       color = ~Saved_Run, 
-                       legendgroup = "Group1")%>%
+                       color = ~Saved_Run,
+                       legendgroup = ~Saved_Run,
+                       colors = custom_palette,
+                       showlegend = TRUE)%>%
         layout(yaxis = list(title = "Discharge (mm)"))%>%
         layout(shapes = list(vline(allmodels$DATE[EvalStart])))
       
-      plot2 <- allmodels %>% plot_ly(x = ~DATE, legendgroup = "Group2") %>%
+      plot2 <- allmodels %>% plot_ly(x = ~DATE) %>%
         add_trace(y = ~Storage, 
                   mode = 'lines', 
                   #name = "Total Storage", 
-                  color = ~Saved_Run) %>%
+                  color = ~Saved_Run,
+                  legendgroup = ~Saved_Run,
+                  colors = custom_palette,
+                  showlegend = F) %>%
         layout(yaxis = list(title = "Total Storage (mm)"))%>%
         layout(shapes = list(vline(allmodels$DATE[EvalStart]))) 
       
-      plot3 <- allmodels %>% plot_ly(x = ~DATE, legendgroup = "Group3") %>%
+      plot3 <- allmodels %>% plot_ly(x = ~DATE) %>%
         add_trace(y = ~S1, 
                   mode = 'lines', 
                  # name = "Upper Storage", 
-                  color = ~Saved_Run) %>%
+                  color = ~Saved_Run,
+                 legendgroup = ~Saved_Run,
+                 colors = custom_palette,
+                 showlegend = F) %>%
         layout(yaxis = list(title = "Upper Storage (mm)"))%>%
         layout(shapes = list(vline(allmodels$DATE[EvalStart]))) 
       
-      plot4 <- allmodels %>% plot_ly(x = ~DATE, legendgroup = "Group4") %>%
+      plot4 <- allmodels %>% plot_ly(x = ~DATE) %>%
         add_trace(y = ~S2, 
                   mode = 'lines', 
                  # name = "Lower Storage", 
-                  color = ~Saved_Run) %>%
+                  color = ~Saved_Run,
+                 legendgroup = ~Saved_Run,
+                 colors = custom_palette,
+                 showlegend = F) %>%
         layout(yaxis = list(title = "Lower Storage (mm)"))%>%
         layout(shapes = list(vline(allmodels$DATE[EvalStart])))
       
-      plot5 <- allmodels %>% plot_ly(x = ~DATE, legendgroup = "Group5") %>%
-        add_trace(y = ~SWE, mode = 'lines', color = ~Saved_Run)  %>% 
+      plot5 <- allmodels %>% plot_ly(x = ~DATE) %>%
+        add_trace(y = ~SWE, mode = 'lines', color = ~Saved_Run,
+                  legendgroup = ~Saved_Run,
+                  colors = custom_palette,
+                  showlegend = F)  %>% 
         layout(yaxis = list(title = "Snowpack (mm)")) %>%
         layout(shapes = list(vline(allmodels$DATE[EvalStart]))) 
       
-      plot6 <- allmodels %>% plot_ly(x = ~DATE, legendgroup = "Group6") %>%
-        add_trace(y = ~PET, mode = 'lines', color = ~Saved_Run)  %>% 
+      plot6 <- allmodels %>% plot_ly(x = ~DATE) %>%
+        add_trace(y = ~PET, mode = 'lines', color = ~Saved_Run,
+                  legendgroup = ~Saved_Run,
+                  colors = custom_palette,
+                  showlegend = F)  %>% 
         layout(yaxis = list(title = "PET (mm)")) %>%
-        layout(shapes = list(vline(allmodels$DATE[EvalStart]))) 
+        layout(shapes = list(vline(allmodels$DATE[EvalStart])))
      
       
       subplot(plot1, plot2, plot3, plot4, plot5, plot6,
               shareX = TRUE, titleY = TRUE, 
-              nrows = 6, heights = c(.17, .17, .17, .17, .16, .16)) %>%
-        layout(legend = list(tracegroupgap = 120))
+              nrows = 6, heights = c(.17, .17, .17, .17, .16, .16)) #%>%
+        #layout(showlegend = TRUE)#, legend = list(tracegroupgap = 100))
     })
     
     
