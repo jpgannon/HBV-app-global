@@ -7,6 +7,8 @@ library(plotly)
 library(leaflet)
 library(sf)
 library(rtop)
+library(htmlwidgets)
+
 
 
 theme_set(theme_classic())
@@ -55,6 +57,7 @@ rando <- function(){
 startpars <- rando()
 
 
+
 # Define UI for application 
 ui <- fluidPage(
   add_busy_spinner(spin = "fading-circle"),
@@ -73,6 +76,7 @@ ui <- fluidPage(
             dateRangeInput("dates", "Run the model for these dates:",
                            start = start, end = end, min = start, max = end),
             hr(style = "border-top: 1px solid #000000;"),
+            actionButton("SavePars", "Save this parameter set"),
             h5(HTML("<b>Parameters for water movement through storages</b>")),
             sliderInput("FC"     ,
                         "Soil field capacity", 
@@ -179,6 +183,14 @@ ui <- fluidPage(
             tabPanel("Select on Map",
                      leafletOutput("Map")
                      ),
+            tabPanel("Saved Model Runs",
+                     h4("When you click the SAVE THIS PARAMETER SET button to the left, 
+                        it will save the current parameters indicated by the sliders.
+                        The parameters will appear below, along with the results of that model run.
+                        You can save up to FIVE parameter sets. Once you have saved five, further 
+                        saved sets will start again at position 1 in the table."),
+                     tableOutput('saveddata'),
+                     plotlyOutput('savedPars', height = 1000)),
             tabPanel("Monte Carlo Plots",
                      h4("Click button to create parameter vs. nse plots after running a Monte Carlo. 
                         If plots show a single point, the run hasn't been completed."),
@@ -220,6 +232,26 @@ server <- function(input, output, session) {
     )
     
     inFile <- NULL
+    
+    savednum <- reactiveVal(1)
+    
+    savedpars <- reactiveVal(data.frame(
+      Parset = rep(NA, 5),
+      FC = rep(NA, 5),
+      beta = rep(NA, 5),
+      LP = rep(NA, 5),
+      SFCF = rep(NA, 5),
+      TT = rep(NA, 5),
+      CFMAX = rep(NA, 5),
+      k0 = rep(NA, 5),
+      k1 = rep(NA, 5),
+      k2 = rep(NA, 5),
+      UZL = rep(NA, 5),
+      PERC = rep(NA, 5),
+      MAXBAS = rep(NA, 5),
+      NSE = rep(NA, 5),
+      NPEKG =  rep(NA, 5)
+      ))
     
     #if no user input file, read default
     inputs_all <- reactive({
@@ -426,7 +458,7 @@ server <- function(input, output, session) {
         
         
         
-        plot1 <- output %>% plot_ly(x = ~DATE)
+        plot1 <- output %>% plot_ly(x = ~DATE, legendgroup = "Group1")
         plot1 <- plot1 %>% add_trace(y = ~q, name = 'Q Modeled', mode = 'lines')
         plot1 <- plot1 %>% add_trace(y = ~Qobs, name = 'Q Measured', mode = 'lines')
     
@@ -434,24 +466,24 @@ server <- function(input, output, session) {
                         layout(shapes = list(vline(output$DATE[EvalStart]))) 
 
         plot2 <- output %>% plot_ly(x = ~DATE, y = ~P, 
-                                    type = 'bar', name = "Precip") %>%
+                                    type = 'bar', name = "Precip", legendgroup = "Group2") %>%
             layout(yaxis = list(title = "Precip (mm)"))%>%
             layout(shapes = list(vline(output$DATE[EvalStart]))) 
 
-        plot3 <- output %>% plot_ly(x = ~DATE) %>%
+        plot3 <- output %>% plot_ly(x = ~DATE, legendgroup = "Group3") %>%
             add_trace(y = ~Storage, mode = 'lines', name = " Total Storage") %>%
             add_trace(y = ~S1, name = 'Upper Storage', mode = 'lines')%>%
             add_trace(y = ~S2, name = 'Lower Storage', mode = 'lines') %>%
             layout(yaxis = list(title = "Storage (mm)"))%>%
             layout(shapes = list(vline(output$DATE[EvalStart]))) 
 
-        plot4 <- output %>% plot_ly(x = ~DATE) %>%
+        plot4 <- output %>% plot_ly(x = ~DATE, legendgroup = "Group4") %>%
             add_trace(y = ~AET, mode = 'lines', name = "AET") %>%
             add_trace(y = ~PET, name = 'PET', mode = 'lines') %>%
             layout(yaxis = list(title = "ET (mm)"))%>%
             layout(shapes = list(vline(output$DATE[EvalStart]))) 
 
-        plot5 <- snowout %>% plot_ly(x = ~DATE) %>%
+        plot5 <- snowout %>% plot_ly(x = ~DATE, legendgroup = "Group5") %>%
             add_trace(y = ~SWE, mode = 'lines', name = "Snow (modeled)") 
         
         plot5 <- plot5 %>% add_trace(y = ~Snow, name = 'Snow (measured)', 
@@ -459,13 +491,14 @@ server <- function(input, output, session) {
             layout(yaxis = list(title = "Snowpack (mm)")) %>%
             layout(shapes = list(vline(output$DATE[EvalStart]))) 
         
-        plot6 <- output %>% plot_ly(x = ~DATE) %>%
+        plot6 <- output %>% plot_ly(x = ~DATE, legendgroup = "Group6") %>%
           add_trace(y = ~Temp, mode = 'lines', name = "Temp (C) measured") %>%
           layout(yaxis = list(title = "Temp (deg C)"))
         
         subplot(plot1, plot2, plot3, plot4, plot5, plot6,
                 shareX = TRUE, titleY = TRUE, 
-                nrows = 6, heights = c(.25, .15, .15, .15, .15, .15)) 
+                nrows = 6, heights = c(.17, .17, .17, .17, .16, .16)) %>%
+          layout(legend = list(tracegroupgap = 120))
     })
     
     
@@ -482,6 +515,7 @@ server <- function(input, output, session) {
                   facet_wrap(facets = vars(name), scales = "free_x", ncol = 3)+
                   ggtitle("Parameter values and NSE of top 100 runs")+
                   theme(text = element_text(size = 20))})
+      
         if(input$objfxn == "NPKGE")output$NSEplot <- renderPlot({
                   NSEparsdat <- read_csv("NSEpars.csv") %>% 
                   select(-MAXBAS) %>%
@@ -668,6 +702,185 @@ server <- function(input, output, session) {
                     lng = gages$LONG[gages$GAGE_NAME == input$gage],
                     zoom = 5)
     })
+    #save parameter set and run HBV for all saved parameter sets
+    observeEvent(input$SavePars, {
+      sptemp <- savedpars()
+      sptemp[savednum(),] <- as.list(c(paste("Saved ", savednum()),
+                                       input$FC, input$beta, input$LP, input$SFCF, 
+                                       input$TT, input$CFMAX, input$k0, input$k1, 
+                                       input$k2, input$UZL, input$PERC, 0, NA, NA))
+      savedpars(sptemp)
+      
+      output$saveddata <- renderTable({
+        savedpars()
+      })
+      if(savednum() == 5) savednum(1) 
+      else savednum(savednum() + 1)
+      
+    })
+    
+    HBVsavedsets <- reactive({
+      parsAll <- savedpars()
+      
+      
+      for(x in 1:sum(!is.na(parsAll$Parset))){
+        
+        pars <- as.numeric(parsAll[x,2:13])
+        
+        modeloutput <- HBV(pars, input_data()$Precip, input_data()$Temp, PET(), 0)
+        modeloutput <- mutate(modeloutput, Saved_Run = paste0(x, "-Saved"))
+        modeloutput <- bind_cols(modeloutput, DATE = input_data()$DATE)
+        
+        #add observations for obj fxn calc
+        results <- bind_cols(modeloutput, 
+                             Qobs = input_data()$Qobs,
+                             Snow = input_data()$Snow)
+        
+        EvalStart <- floor(length(input_data()$Qobs) * 0.4)
+        EvalEnd <- length(input_data()$Qobs)
+        
+        #trim the first 40% of the record so it isn't included in the NSE calculation
+        results <- results[EvalStart:EvalEnd,]
+        
+        #make snow record to calc NSE
+        
+        justsnow <- select(results, Snow, SWE)
+        
+        #calculate obj fxns
+        NSE <-  1 - ((sum((results$Qobs - results$q) ^ 2, na.rm = TRUE)) / 
+                       sum((results$Qobs - mean(results$Qobs, na.rm = TRUE)) ^ 2, na.rm = TRUE))
+        
+        snowNSE <- 1 - ((sum((justsnow$Snow - justsnow$SWE) ^ 2, na.rm = TRUE)) / 
+                          sum((justsnow$Snow - mean(justsnow$Snow, na.rm = TRUE)) ^ 2, na.rm = TRUE))
+        
+        NPEKG <- RNP(sim = results$q,
+                     obs = results$Qobs)
+        
+        snowNPEKG <- RNP(sim = justsnow$SWE,
+                         obs = justsnow$Snow)
+        
+        if(snowNSE == -Inf) snowNSE <- 0
+        if(snowNPEKG == -Inf) snowNPEKG <- 0
+        
+        if(input$snowWT > 0) NSE <- (NSE * (1 - input$snowWT)) + (snowNSE * input$snowWT)
+        if(input$snowWT > 0) NPEKG <- (NPEKG * (1 - input$snowWT)) + (snowNPEKG * input$snowWT)
+        
+        #add NSE and NPEKG to pars table
+        parsAll <- savedpars()
+        parsAll$NSE[x] <- round(NSE,2)
+        parsAll$NPEKG[x] <- round(NPEKG,2)
+        savedpars(parsAll)
+        
+        if(x == 1) allmodels <- modeloutput
+        if(x != 1) allmodels <- bind_rows(allmodels, modeloutput)
+      }
+      ref_data <- bind_cols( 
+        DATE = input_data()$DATE, 
+        q = input_data()$Qobs,
+        SWE = input_data()$Snow,
+        Precip = input_data()$Precip
+      ) |> mutate(Saved_Run = "Observed")
+      
+      allmodels <- bind_rows(allmodels, ref_data)
+      allmodels
+    })
+    
+    output$saveddata <- renderTable({savedpars()})
+    
+    output$savedPars <- renderPlotly({
+      #run HBV for each parameter set and make plot
+      allmodels <- HBVsavedsets()
+      
+      EvalStart <- floor(length(allmodels$DATE[allmodels$Saved_Run == "Observed"]) * 0.4)
+      
+      vline <- function(x = 0, color = "red") {
+        list(
+          type = "line", 
+          y0 = 0, 
+          y1 = 1, 
+          yref = "paper",
+          x0 = x, 
+          x1 = x, 
+          line = list(color = color, dash = "dot")
+        )
+      }
+      
+      # Define specific colors for each value of modelrun
+      color_mapping <- c("1-Saved" = "#1f78b4", "2-Saved" = "#33a02c", "3-Saved" = "#e31a1c",
+                         "4-Saved" = "#ff7f00", "5-Saved" = "#6a3d9a", "Observed" = "#a6cee3")
+      
+      # Map modelrun to specific colors
+      custom_palette <- color_mapping[allmodels$Saved_Run]
+      
+      plot1 <- plot_ly(data = allmodels,
+                       x = ~DATE, y = ~q, 
+                       type = "scatter", 
+                       mode = "lines", 
+                       color = ~Saved_Run,
+                       legendgroup = ~Saved_Run,
+                       colors = custom_palette,
+                       showlegend = TRUE)%>%
+        layout(yaxis = list(title = "Discharge (mm)"))%>%
+        layout(shapes = list(vline(allmodels$DATE[EvalStart])))
+      
+      plot2 <- allmodels %>% plot_ly(x = ~DATE) %>%
+        add_trace(y = ~Storage, 
+                  mode = 'lines', 
+                  #name = "Total Storage", 
+                  color = ~Saved_Run,
+                  legendgroup = ~Saved_Run,
+                  colors = custom_palette,
+                  showlegend = F) %>%
+        layout(yaxis = list(title = "Total Storage (mm)"))%>%
+        layout(shapes = list(vline(allmodels$DATE[EvalStart]))) 
+      
+      plot3 <- allmodels %>% plot_ly(x = ~DATE) %>%
+        add_trace(y = ~S1, 
+                  mode = 'lines', 
+                 # name = "Upper Storage", 
+                  color = ~Saved_Run,
+                 legendgroup = ~Saved_Run,
+                 colors = custom_palette,
+                 showlegend = F) %>%
+        layout(yaxis = list(title = "Upper Storage (mm)"))%>%
+        layout(shapes = list(vline(allmodels$DATE[EvalStart]))) 
+      
+      plot4 <- allmodels %>% plot_ly(x = ~DATE) %>%
+        add_trace(y = ~S2, 
+                  mode = 'lines', 
+                 # name = "Lower Storage", 
+                  color = ~Saved_Run,
+                 legendgroup = ~Saved_Run,
+                 colors = custom_palette,
+                 showlegend = F) %>%
+        layout(yaxis = list(title = "Lower Storage (mm)"))%>%
+        layout(shapes = list(vline(allmodels$DATE[EvalStart])))
+      
+      plot5 <- allmodels %>% plot_ly(x = ~DATE) %>%
+        add_trace(y = ~SWE, mode = 'lines', color = ~Saved_Run,
+                  legendgroup = ~Saved_Run,
+                  colors = custom_palette,
+                  showlegend = F)  %>% 
+        layout(yaxis = list(title = "Snowpack (mm)")) %>%
+        layout(shapes = list(vline(allmodels$DATE[EvalStart]))) 
+      
+      plot6 <- allmodels %>% plot_ly(x = ~DATE) %>%
+        add_trace(y = ~PET, mode = 'lines', color = ~Saved_Run,
+                  legendgroup = ~Saved_Run,
+                  colors = custom_palette,
+                  showlegend = F)  %>% 
+        layout(yaxis = list(title = "PET (mm)")) %>%
+        layout(shapes = list(vline(allmodels$DATE[EvalStart])))
+     
+      
+      subplot(plot1, plot2, plot3, plot4, plot5, plot6,
+              shareX = TRUE, titleY = TRUE, 
+              nrows = 6, heights = c(.17, .17, .17, .17, .16, .16)) #%>%
+        #layout(showlegend = TRUE)#, legend = list(tracegroupgap = 100))
+    })
+    
+    
+    
     #select sites by clicking on them
     observeEvent(input$Map_marker_click, {
         site <- input$Map_marker_click
