@@ -197,18 +197,19 @@ ui <- fluidPage(
                      actionButton("Refresh", "Create Monte Carlo Plots"),
                      plotOutput("NSEplot", height = "800px")),
            tabPanel("Upload Data",
-                    h4("Click the button below to download a template input file.
+                    h4("STEP 1: Click the button below to download a template input file.
                         Add your DAILY data to this sheet and then upload as a CSV
                         using the upload button below."),
                     downloadButton("downloadTemplate","Download Input Data Template"),
-                    radioButtons("datetype", "Select the date format of your input file",
+                    radioButtons("datetype", "STEP 2: Select the date format of your input file",
                                  choices = c("mdy", "ymd", "dmy"), selected = "ymd"),
-                    fileInput("UserData", "Upload filled-in template file by clicking Browse below",
+                    fileInput("UserData", "STEP 3: Upload filled-in template file by clicking Browse below",
                               accept = c("text/csv",
                                          "text/comma-separated-values/text/plain",
                                          ".csv")),
-                    h5("Select User Data in the Choose your watershed dropdown to the left.
+                    h5("STEP 4: Select User Data in the Choose your watershed dropdown to the left.
                        If everything went well your data will be shown below."),
+                    h5("STEP 5: Enter a latitude for your site in the Latitude field to the left"),
                     actionButton("clear", "Clear User Input"),
                     tableOutput("input_contents")
            ),
