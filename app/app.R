@@ -12,6 +12,8 @@ library(htmlwidgets)
 
 
 theme_set(theme_classic())
+
+#load necessary scripts
 source("HBV.R")
 source("hbvnse.R")
 source("NPE-KlingGupta.R")
