@@ -206,7 +206,7 @@ ui <- fluidPage(
                  h5(HTML("Population = 100, Generations = 50")),
                  #numericInput("runs", "Population size for Genetic Algorithm", min = 50, max = 500, value = 100),
                  #numericInput("generations", "Number of Generations", min = 10, max = 100, value = 50),
-                 actionButton("runGA", "Run Genetic Algorithm Optimization"),
+                 actionButton("runGA", "Run Genetic Algorithm Parameterization"),
                  hr(style = "border-top: 1px solid #000000;"),
                  downloadButton("downloadData", "Download current model data")
     ),
